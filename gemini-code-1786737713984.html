@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Game Banker</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #f4f4f9; margin: 0; padding: 20px; }
+    .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-width: 500px; margin: 0 auto 20px; }
+    .hidden { display: none; }
+    
+    /* ICON PICKER STYLES */
+    .league-title { font-size: 12px; font-weight: bold; color: #777; text-transform: uppercase; margin: 10px 0 5px; }
+    .icon-picker { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; max-height: 160px; overflow-y: auto; padding: 5px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa; }
+    .icon-opt { cursor: pointer; padding: 6px; border: 2px solid transparent; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: #fff; }
+    .icon-opt img { width: 32px; height: 32px; object-fit: contain; }
+    .icon-opt.selected { border-color: #007bff; background: #e7f1ff; }
+
+    .player-row { border-bottom: 1px solid #eee; padding: 10px 0; }
+    .player-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+    .player-info { display: flex; align-items: center; gap: 8px; }
+    .player-avatar { width: 28px; height: 28px; object-fit: contain; }
+    .badge { font-size: 11px; background: #eee; padding: 2px 6px; border-radius: 4px; color: #555; }
+    .history { font-size: 13px; color: #666; margin-top: 8px; padding-left: 10px; background: #fafafa; border-radius: 6px; }
+    .gain { color: green; } .spend { color: red; }
+    button { background: #007bff; color: white; border: none; padding: 10px 16px; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 10px; }
+    button.secondary { background: #6c757d; }
+    select, input { width: 100%; padding: 8px; margin: 6px 0 12px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 6px; }
+  </style>
+</head>
+<body>
+
+  <!-- SCREEN 1: LANDING / CREATE PARTY -->
+  <div id="landingScreen" class="card">
+    <h2>Game Banker</h2>
+    <p>Start a new game session or join an existing party.</p>
+    <button onclick="createParty()">Create New Party</button>
+  </div>
+
+  <!-- SCREEN 2: JOIN PARTY FORM -->
+  <div id="joinScreen" class="card hidden">
+    <h2>Join Party</h2>
+    <label>Your Name:</label>
+    <input type="text" id="usernameInput" placeholder="Enter username">
+    
+    <label>Choose Your Logo:</label>
+
+    <div class="league-title">League Logos</div>
+    <div class="icon-picker" id="leaguePicker"></div>
+    
+    <div class="league-title">NFL Teams</div>
+    <div class="icon-picker" id="nflPicker"></div>
+    
+    <div class="league-title">CFL Teams</div>
+    <div class="icon-picker" id="cflPicker"></div>
+
+    <button onclick="joinParty()">Enter Game</button>
+  </div>
+
+  <!-- SCREEN 3: GAME DASHBOARD -->
+  <div id="gameScreen" class="card hidden">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h3 style="margin:0;">Party Dashboard</h3>
+      <div>
+        <button style="width:auto; padding:5px 10px; margin:0;" class="secondary" onclick="toggleAvatarModal()">Change Logo 🏈</button>
+        <button style="width:auto; padding:5px 10px; margin:0;" onclick="copyPartyLink()">Share Link 🔗</button>
+      </div>
+    </div>
+
+    <!-- CHANGE AVATAR MODAL/PANEL -->
+    <div id="avatarModal" class="hidden" style="background: #eef6ff; padding: 12px; border-radius: 8px; margin: 15px 0; border: 1px solid #b6d4fe;">
+      <h4 style="margin-top:0;">Update Avatar During Game</h4>
+
+      <div class="league-title">League Logos</div>
+      <div class="icon-picker" id="leaguePickerInGame"></div>
+
+      <div class="league-title">NFL Teams</div>
+      <div class="icon-picker" id="nflPickerInGame"></div>
+      
+      <div class="league-title">CFL Teams</div>
+      <div class="icon-picker" id="cflPickerInGame"></div>
+      <button onclick="saveNewAvatar()">Save New Logo</button>
+    </div>
+    
+    <!-- COMMISSIONER PANEL -->
+    <div id="commissionerPanel" class="hidden" style="background: #fff8e6; padding: 12px; border-radius: 8px; margin: 15px 0; border: 1px solid #ffe58f;">
+      <h4 style="margin-top:0;">👑 Commissioner Controls</h4>
+      <label>Target Player:</label>
+      <select id="targetPlayerSelect"></select>
+
+      <label>Type:</label>
+      <select id="txTypeSelect" onchange="toggleCategorySelect()">
+        <option value="gain">Gained (+)</option>
+        <option value="spend">Spent (-)</option>
+        <option value="correction">Correction / Undo</option>
+      </select>
+
+      <div id="categoryWrapper">
+        <label>Reason:</label>
+        <select id="txCategorySelect">
+          <option value="Salary">Salary</option>
+          <option value="Action">Action</option>
+          <option value="Vacation">Vacation</option>
+          <option value="Banned money">Banned money</option>
+        </select>
+      </div>
+
+      <label>Amount ($):</label>
+      <input type="number" id="txAmountInput" placeholder="0.00" min="0">
+
+      <button onclick="submitTransaction()">Process Transaction</button>
+    </div>
+
+    <!-- PLAYERS LIST -->
+    <h4>Players & Balances</h4>
+    <div id="playersList"></div>
+  </div>
+
+  <!-- FIREBASE LIBRARIES -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getDatabase, ref, set, push, onValue, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+    // EXPLICIT FIREBASE CONFIG
+    const firebaseConfig = {
+      apiKey: "AIzaSyDZ-3G6UmQCCIHsBFKEiE5JT12j4pMb_lw",
+      authDomain: "fl-banker.firebaseapp.com",
+      databaseURL: "https://fl-banker-default-rtdb.firebaseio.com",
+      projectId: "fl-banker",
+      storageBucket: "fl-banker.firebasestorage.app",
+      messagingSenderId: "509146812119",
+      appId: "1:509146812119:web:d0db8f0d4f6fe043c6a92",
+      measurementId: "G-60RESZS239"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    // LOGO LISTS
+    const LOGOS = {
+      League: [
+        { name: "FL", url: "https://i.postimg.cc/DZ7mvPTq/Screenshot-2026-08-14-1-07-43-AM.png" },
+        { name: "college", url: "https://i.postimg.cc/dV756GgD/Screenshot-2026-08-14-1-14-04-AM.png" }
+      ],
+      NFL: [
+        { name: "Commanders", url: "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png" },
+        { name: "Titans", url: "https://a.espncdn.com/i/teamlogos/nfl/500/ten.png" },
+        { name: "Steelers", url: "https://a.espncdn.com/i/teamlogos/nfl/500/pit.png" },
+        { name: "Buccaneers", url: "https://a.espncdn.com/i/teamlogos/nfl/500/tb.png" },
+        { name: "Jets", url: "https://a.espncdn.com/i/teamlogos/nfl/500/nyj.png" },
+        { name: "49ers", url: "https://a.espncdn.com/i/teamlogos/nfl/500/sf.png" },
+        { name: "Patriots", url: "https://a.espncdn.com/i/teamlogos/nfl/500/ne.png" },
+        { name: "Seahawks", url: "https://a.espncdn.com/i/teamlogos/nfl/500/sea.png" },
+        { name: "Saints", url: "https://a.espncdn.com/i/teamlogos/nfl/500/no.png" },
+        { name: "Raiders", url: "https://a.espncdn.com/i/teamlogos/nfl/500/lv.png" },
+        { name: "Dolphins", url: "https://a.espncdn.com/i/teamlogos/nfl/500/mia.png" },
+        { name: "Eagles", url: "https://a.espncdn.com/i/teamlogos/nfl/500/phi.png" },
+        { name: "Lions", url: "https://a.espncdn.com/i/teamlogos/nfl/500/det.png" },
+        { name: "Broncos", url: "https://a.espncdn.com/i/teamlogos/nfl/500/den.png" },
+        { name: "Browns", url: "https://a.espncdn.com/i/teamlogos/nfl/500/cle.png" },
+        { name: "Packers", url: "https://a.espncdn.com/i/teamlogos/nfl/500/gb.png" },
+        { name: "Vikings", url: "https://a.espncdn.com/i/teamlogos/nfl/500/min.png" },
+        { name: "Rams", url: "https://a.espncdn.com/i/teamlogos/nfl/500/lar.png" },
+        { name: "Panthers", url: "https://a.espncdn.com/i/teamlogos/nfl/500/car.png" },
+        { name: "Bengals", url: "https://a.espncdn.com/i/teamlogos/nfl/500/cin.png" },
+        { name: "Cardinals", url: "https://a.espncdn.com/i/teamlogos/nfl/500/ari.png" },
+        { name: "Falcons", url: "https://a.espncdn.com/i/teamlogos/nfl/500/atl.png" },
+        { name: "Ravens", url: "https://a.espncdn.com/i/teamlogos/nfl/500/bal.png" },
+        { name: "Bills", url: "https://a.espncdn.com/i/teamlogos/nfl/500/buf.png" },
+        { name: "Bears", url: "https://a.espncdn.com/i/teamlogos/nfl/500/chi.png" },
+        { name: "Cowboys", url: "https://a.espncdn.com/i/teamlogos/nfl/500/dal.png" },
+        { name: "Texans", url: "https://a.espncdn.com/i/teamlogos/nfl/500/hou.png" },
+        { name: "Colts", url: "https://a.espncdn.com/i/teamlogos/nfl/500/ind.png" },
+        { name: "Jaguars", url: "https://a.espncdn.com/i/teamlogos/nfl/500/jax.png" },
+        { name: "Chiefs", url: "https://a.espncdn.com/i/teamlogos/nfl/500/kc.png" },
+        { name: "Chargers", url: "https://a.espncdn.com/i/teamlogos/nfl/500/lac.png" },
+        { name: "Giants", url: "https://a.espncdn.com/i/teamlogos/nfl/500/nyg.png" }
+      ],
+      CFL: [
+        { name: "Argonauts", url: "https://upload.wikimedia.org/wikipedia/en/9/9e/Toronto_Argonauts_logo.svg?utm_source=en.wikipedia.org&utm_campaign=index&utm_content=original" },
+        { name: "Blue Bombers", url: "https://upload.wikimedia.org/wikipedia/commons/b/b1/Winnipeg_Blue_Bombers_Logo.svg?utm_source=en.wikipedia.org&utm_campaign=index&utm_content=original" },
+        { name: "Tiger-Cats", url: "https://upload.wikimedia.org/wikipedia/en/thumb/b/b4/Hamilton_Tiger-Cats_logo.svg/1280px-Hamilton_Tiger-Cats_logo.svg.png?utm_source=en.wikipedia.org&utm_campaign=index&utm_content=thumbnail" },
+        { name: "Alouettes", url: "https://upload.wikimedia.org/wikipedia/commons/0/0c/Montreal_Alouettes_logo_2019.png?utm_source=en.wikipedia.org&utm_campaign=index&utm_content=original" },
+        { name: "Redblacks", url: "https://upload.wikimedia.org/wikipedia/en/thumb/f/f2/Ottawa_Redblacks_logo.svg/1280px-Ottawa_Redblacks_logo.svg.png?utm_source=en.wikipedia.org&utm_campaign=index&utm_content=thumbnail" },
+        { name: "Roughriders", url: "https://upload.wikimedia.org/wikipedia/en/thumb/f/f6/Saskatchewan_Roughriders_logo.svg/1280px-Saskatchewan_Roughriders_logo.svg.png?utm_source=en.wikipedia.org&utm_campaign=index&utm_content=thumbnail" },
+        { name: "Elks", url: "https://upload.wikimedia.org/wikipedia/fr/0/0d/Edmonton_Elks_Logo.png?utm_source=fr.wikipedia.org&utm_campaign=index&utm_content=original" },
+        { name: "Stampeders", url: "https://www.statscrew.com/graphics/teams_full/cfl_calgary_stampeders12.png" },
+        { name: "BC Lions", url: "https://upload.wikimedia.org/wikipedia/en/a/a5/BC_Lions_2025.png?utm_source=en.wikipedia.org&utm_campaign=index&utm_content=original" }
+      ]
+    };
+
+    let partyId = new URLSearchParams(window.location.search).get("room");
+    let myUserId = localStorage.getItem("game_user_id");
+    let selectedIcon = LOGOS.League[0].url;
+
+    // Render Icon Pickers
+    function buildPickers(leagueContainerId, nflContainerId, cflContainerId) {
+      const leagueBox = document.getElementById(leagueContainerId);
+      const nflBox = document.getElementById(nflContainerId);
+      const cflBox = document.getElementById(cflContainerId);
+
+      leagueBox.innerHTML = "";
+      nflBox.innerHTML = "";
+      cflBox.innerHTML = "";
+
+      LOGOS.League.forEach((item, idx) => {
+        const div = createIconOpt(item, idx === 0 && leagueContainerId === 'leaguePicker');
+        leagueBox.appendChild(div);
+      });
+
+      LOGOS.NFL.forEach((team) => {
+        const div = createIconOpt(team, false);
+        nflBox.appendChild(div);
+      });
+
+      LOGOS.CFL.forEach((team) => {
+        const div = createIconOpt(team, false);
+        cflBox.appendChild(div);
+      });
+    }
+
+    function createIconOpt(team, isDefault) {
+      const div = document.createElement("div");
+      div.className = `icon-opt ${isDefault ? 'selected' : ''}`;
+      div.onclick = () => {
+        document.querySelectorAll('.icon-opt').forEach(el => el.classList.remove('selected'));
+        div.classList.add('selected');
+        selectedIcon = team.url;
+      };
+      div.innerHTML = `<img src="${team.url}" title="${team.name}" alt="${team.name}">`;
+      return div;
+    }
+
+    // Initialize layout options for both join screen and in-game modal
+    buildPickers("leaguePicker", "nflPicker", "cflPicker");
+    buildPickers("leaguePickerInGame", "nflPickerInGame", "cflPickerInGame");
+
+    window.createParty = () => {
+      const newPartyRef = push(ref(db, 'parties'));
+      partyId = newPartyRef.key;
+      window.location.search = `?room=${partyId}`;
+    };
+
+    window.joinParty = () => {
+      const name = document.getElementById("usernameInput").value.trim();
+      if (!name) return alert("Please enter a username");
+
+      if (!myUserId) {
+        myUserId = 'user_' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem("game_user_id", myUserId);
+      }
+
+      const playerRef = ref(db, `parties/${partyId}/players/${myUserId}`);
+      
+      onValue(ref(db, `parties/${partyId}/commissioner`), (snapshot) => {
+        const commissionerId = snapshot.val();
+        let isComm = false;
+        if (!commissionerId) {
+          set(ref(db, `parties/${partyId}/commissioner`), myUserId);
+          isComm = true;
+        } else if (commissionerId === myUserId) {
+          isComm = true;
+        }
+
+        set(playerRef, {
+          name: name,
+          icon: selectedIcon,
+          role: isComm ? "Commissioner / FL Player" : "FL Player",
+          balance: 0
+        });
+
+        document.getElementById("joinScreen").classList.add("hidden");
+        document.getElementById("gameScreen").classList.remove("hidden");
+        listenToGame();
+      }, { onlyOnce: true });
+    };
+
+    function listenToGame() {
+      onValue(ref(db, `parties/${partyId}`), (snapshot) => {
+        const data = snapshot.val();
+        if (!data) return;
+
+        const isComm = data.commissioner === myUserId;
+        document.getElementById("commissionerPanel").classList.toggle("hidden", !isComm);
+
+        const playersDiv = document.getElementById("playersList");
+        const select = document.getElementById("targetPlayerSelect");
+        playersDiv.innerHTML = "";
+        select.innerHTML = "";
+
+        const players = data.players || {};
+        const transactions = data.history || {};
+
+        Object.keys(players).forEach(id => {
+          const p = players[id];
+          
+          const opt = document.createElement("option");
+          opt.value = id;
+          opt.textContent = `${p.name}`;
+          select.appendChild(opt);
+
+          let historyHtml = "";
+          Object.values(transactions)
+            .filter(t => t.targetId === id)
+            .forEach(t => {
+              const sign = t.type === 'gain' ? '+' : '-';
+              const css = t.type === 'gain' ? 'gain' : 'spend';
+              historyHtml += `<div class="${css}">${sign}$${t.amount} (${t.category})</div>`;
+            });
+
+          const isMe = id === myUserId;
+          const playerEl = document.createElement("div");
+          playerEl.className = "player-row";
+          playerEl.innerHTML = `
+            <div class="player-header" onclick="toggleHistory('${id}')">
+              <div class="player-info">
+                <img class="player-avatar" src="${p.icon || ''}" alt="logo">
+                <span><strong>${p.name}</strong></span> 
+                <span class="badge">${p.role}</span>
+              </div>
+              <div><strong>$${(p.balance || 0).toFixed(2)}</strong></div>
+            </div>
+            ${isMe ? `<div id="hist_${id}" class="history">${historyHtml || 'No transactions yet.'}</div>` : ''}
+          `;
+          playersDiv.appendChild(playerEl);
+        });
+      });
+    }
+
+    // TOGGLE & SAVE IN-GAME AVATAR
+    window.toggleAvatarModal = () => {
+      const el = document.getElementById("avatarModal");
+      el.classList.toggle("hidden");
+    };
+
+    window.saveNewAvatar = () => {
+      if (!partyId || !myUserId) return;
+      update(ref(db, `parties/${partyId}/players/${myUserId}`), {
+        icon: selectedIcon
+      });
+      document.getElementById("avatarModal").classList.add("hidden");
+    };
+
+    window.toggleHistory = (id) => {
+      const el = document.getElementById(`hist_${id}`);
+      if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+    };
+
+    window.toggleCategorySelect = () => {
+      const type = document.getElementById("txTypeSelect").value;
+      document.getElementById("categoryWrapper").style.display = type === 'correction' ? 'none' : 'block';
+    };
+
+    window.submitTransaction = () => {
+      const targetId = document.getElementById("targetPlayerSelect").value;
+      const type = document.getElementById("txTypeSelect").value;
+      const category = type === 'correction' ? 'Correction' : document.getElementById("txCategorySelect").value;
+      const amount = parseFloat(document.getElementById("txAmountInput").value);
+
+      if (!amount || amount <= 0) return alert("Enter a valid amount");
+
+      onValue(ref(db, `parties/${partyId}/players/${targetId}/balance`), (snap) => {
+        let currentBal = snap.val() || 0;
+        let newBal = currentBal;
+
+        if (type === 'gain') newBal += amount;
+        else if (type === 'spend' || type === 'correction') newBal -= amount;
+
+        update(ref(db, `parties/${partyId}/players/${targetId}`), { balance: newBal });
+        
+        push(ref(db, `parties/${partyId}/history`), {
+          targetId: targetId,
+          type: type,
+          category: category,
+          amount: amount,
+          timestamp: Date.now()
+        });
+
+        document.getElementById("txAmountInput").value = "";
+      }, { onlyOnce: true });
+    };
+
+    window.copyPartyLink = () => {
+      navigator.clipboard.writeText(window.location.href);
+      alert("Party link copied to clipboard!");
+    };
+
+    if (partyId) {
+      document.getElementById("landingScreen").classList.add("hidden");
+      document.getElementById("joinScreen").classList.remove("hidden");
+    }
+  </script>
+</body>
+</html>
